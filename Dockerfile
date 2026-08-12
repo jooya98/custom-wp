@@ -13,10 +13,9 @@ COPY docker/www.conf /usr/local/etc/php-fpm.d/zz-custom-wp.conf
 
 RUN chmod +x /usr/local/bin/custom-wp-entrypoint.sh
 
-# cache dir for fastcgi_cache
-RUN mkdir -p /var/cache/nginx/fastcgi && \
-    mkdir -p /run/nginx && \
-    chown -R www-data:www-data /var/cache/nginx /var/www/html
+# WordPress document root and nginx runtime directories
+RUN mkdir -p /run/nginx && \
+    chown -R www-data:www-data /var/www/html
 
 EXPOSE 80
 
