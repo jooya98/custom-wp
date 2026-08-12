@@ -8,6 +8,10 @@ COPY docker/nginx.conf /etc/nginx/nginx.conf
 
 # supervisord config: runs php-fpm + nginx in one container
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/entrypoint.sh /usr/local/bin/custom-wp-entrypoint.sh
+COPY docker/www.conf /usr/local/etc/php-fpm.d/zz-custom-wp.conf
+
+RUN chmod +x /usr/local/bin/custom-wp-entrypoint.sh
 
 # cache dir for fastcgi_cache
 RUN mkdir -p /var/cache/nginx/fastcgi && \
@@ -16,4 +20,5 @@ RUN mkdir -p /var/cache/nginx/fastcgi && \
 
 EXPOSE 80
 
+ENTRYPOINT ["/usr/local/bin/custom-wp-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf", "-n"]
