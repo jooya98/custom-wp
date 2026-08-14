@@ -39,9 +39,15 @@ if [[ -f /var/www/html/wp-config.php ]]; then
     elif [[ "$network_tables" == "absent" ]]; then
         # The normal installer has run, but Network Setup has not. Remove only
         # the premature network constants from this image's prior bootstrap.
-        awk '/define\\( '\''MULTISITE'\''/ || /define\\( '\''SUBDOMAIN_INSTALL'\''/ || /define\\( '\''DOMAIN_CURRENT_SITE'\''/ || /define\\( '\''PATH_CURRENT_SITE'\''/ || /define\\( '\''SITE_ID_CURRENT_SITE'\''/ || /define\\( '\''BLOG_ID_CURRENT_SITE'\''/ { next }
-            /\\/\\* That.s all, stop editing/ { print "define( '\''WP_ALLOW_MULTISITE'\'', true );" }
-            { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+        sed -E \
+            -e "/define\\( 'MULTISITE'/d" \
+            -e "/define\\( 'SUBDOMAIN_INSTALL'/d" \
+            -e "/define\\( 'DOMAIN_CURRENT_SITE'/d" \
+            -e "/define\\( 'PATH_CURRENT_SITE'/d" \
+            -e "/define\\( 'SITE_ID_CURRENT_SITE'/d" \
+            -e "/define\\( 'BLOG_ID_CURRENT_SITE'/d" \
+            -e "/\\/\\* That's all, stop editing/ i define( 'WP_ALLOW_MULTISITE', true );" \
+            /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
         mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     elif ! grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
         # A database that is not yet reachable still needs the Network Setup
