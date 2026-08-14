@@ -26,26 +26,28 @@ export WORDPRESS_NETWORK_DOMAIN
 domain_line="define( 'DOMAIN_CURRENT_SITE', '${WORDPRESS_NETWORK_DOMAIN}' );"
 network_tables="unknown"
 if [[ -n "${WORDPRESS_DB_HOST:-}" && -n "${WORDPRESS_DB_NAME:-}" ]]; then
-    network_tables="$(php -r '$m=@mysqli_connect(getenv("WORDPRESS_DB_HOST"),getenv("WORDPRESS_DB_USER"),getenv("WORDPRESS_DB_PASSWORD"),getenv("WORDPRESS_DB_NAME")); if (!$m) exit; $r=@mysqli_query($m,"SHOW TABLES LIKE \\\"wp_blogs\\\""); echo ($r && mysqli_num_rows($r) > 0) ? "present" : "absent";' 2>/dev/null || true)"
+    # CHAR(...) avoids shell/PHP/SQL quote-escaping layers in this startup probe.
+    network_tables="$(php -r '$m=@mysqli_connect(getenv("WORDPRESS_DB_HOST"),getenv("WORDPRESS_DB_USER"),getenv("WORDPRESS_DB_PASSWORD"),getenv("WORDPRESS_DB_NAME")); if (!$m) exit; $r=@mysqli_query($m,"SHOW TABLES LIKE CHAR(119,112,95,98,108,111,103,115)"); echo ($r && mysqli_num_rows($r) > 0) ? "present" : "absent";' 2>/dev/null || true)"
 fi
 if [[ -f /var/www/html/wp-config.php ]]; then
     if [[ "$network_tables" == "present" ]]; then
-        # Network Setup has completed. Ensure the generated network constants
-        # are present, then reconcile only the network root hostname.
-        if grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
-            awk -v domain_line="$domain_line" '/DOMAIN_CURRENT_SITE/ { print domain_line; next } { print }' \
-                /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
-        else
-            awk -v domain_line="$domain_line" '/\\/\\* That.s all, stop editing/ {
-                print "define( '\''MULTISITE'\'', true );"
-                print "define( '\''SUBDOMAIN_INSTALL'\'', false );"
-                print domain_line
-                print "define( '\''PATH_CURRENT_SITE'\'', '\''/'\'' );"
-                print "define( '\''SITE_ID_CURRENT_SITE'\'', 1 );"
-                print "define( '\''BLOG_ID_CURRENT_SITE'\'', 1 );"
-            }
-            { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
-        fi
+        # Network Setup has completed. Remove stale/duplicate bootstrap lines,
+        # then write one complete canonical subdirectory-network definition.
+        sed -E \
+            -e "/define\\( 'WP_ALLOW_MULTISITE'/d" \
+            -e "/define\\( 'MULTISITE'/d" \
+            -e "/define\\( 'SUBDOMAIN_INSTALL'/d" \
+            -e "/define\\( 'DOMAIN_CURRENT_SITE'/d" \
+            -e "/define\\( 'PATH_CURRENT_SITE'/d" \
+            -e "/define\\( 'SITE_ID_CURRENT_SITE'/d" \
+            -e "/define\\( 'BLOG_ID_CURRENT_SITE'/d" \
+            -e "/\\/\\* That's all, stop editing/ i define( 'MULTISITE', true );" \
+            -e "/\\/\\* That's all, stop editing/ i define( 'SUBDOMAIN_INSTALL', false );" \
+            -e "/\\/\\* That's all, stop editing/ i ${domain_line}" \
+            -e "/\\/\\* That's all, stop editing/ i define( 'PATH_CURRENT_SITE', '/' );" \
+            -e "/\\/\\* That's all, stop editing/ i define( 'SITE_ID_CURRENT_SITE', 1 );" \
+            -e "/\\/\\* That's all, stop editing/ i define( 'BLOG_ID_CURRENT_SITE', 1 );" \
+            /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
         mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     elif [[ "$network_tables" == "absent" ]]; then
         # The normal installer has run, but Network Setup has not. Remove only
