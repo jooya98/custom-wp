@@ -18,19 +18,30 @@ chown -R www-data:www-data /var/www/html
 # Let the official entrypoint create wp-config.php from the normalized values.
 /usr/local/bin/docker-entrypoint.sh php-fpm -t
 
-# Enable a subdirectory WordPress network on the platform hostname. These
-# constants are inserted only once and remain in the persistent wp-config.php.
-# Additional sites may use independent domains at the WordPress site layer.
-if [[ -f /var/www/html/wp-config.php ]] && ! grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
-    awk '/\/\* That.s all, stop editing/ {
-        print "define( '\''MULTISITE'\'', true );"
-        print "define( '\''SUBDOMAIN_INSTALL'\'', false );"
-        print "define( '\''DOMAIN_CURRENT_SITE'\'', '\''deniz-wp.gerdoo.app'\'' );"
-        print "define( '\''PATH_CURRENT_SITE'\'', '\''/'\'' );"
-        print "define( '\''SITE_ID_CURRENT_SITE'\'', 1 );"
-        print "define( '\''BLOG_ID_CURRENT_SITE'\'', 1 );"
-    }
-    { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+# Enable a subdirectory WordPress network on the canonical platform hostname.
+# The domain is configurable so the persistent wp-config.php can be migrated
+# without touching WordPress site records or child-site routing.
+: "${WORDPRESS_NETWORK_DOMAIN:=network.denizagency.ir}"
+export WORDPRESS_NETWORK_DOMAIN
+
+domain_line="define( 'DOMAIN_CURRENT_SITE', '${WORDPRESS_NETWORK_DOMAIN}' );"
+if [[ -f /var/www/html/wp-config.php ]]; then
+    if grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
+        # Reconcile only the network root constant on an existing volume.
+        awk -v domain_line="$domain_line" '/DOMAIN_CURRENT_SITE/ { print domain_line; next } { print }' \
+            /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+    else
+        # Add the multisite constants during first initialization.
+        awk -v domain_line="$domain_line" '/\/\* That.s all, stop editing/ {
+            print "define( '\''MULTISITE'\'', true );"
+            print "define( '\''SUBDOMAIN_INSTALL'\'', false );"
+            print domain_line
+            print "define( '\''PATH_CURRENT_SITE'\'', '\''/'\'' );"
+            print "define( '\''SITE_ID_CURRENT_SITE'\'', 1 );"
+            print "define( '\''BLOG_ID_CURRENT_SITE'\'', 1 );"
+        }
+        { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+    fi
     mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     chown www-data:www-data /var/www/html/wp-config.php
 fi
