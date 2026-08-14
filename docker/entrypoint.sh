@@ -18,31 +18,38 @@ chown -R www-data:www-data /var/www/html
 # Let the official entrypoint create wp-config.php from the normalized values.
 /usr/local/bin/docker-entrypoint.sh php-fpm -t
 
-# Enable a subdirectory WordPress network on the canonical platform hostname.
-# The domain is configurable so the persistent wp-config.php can be migrated
-# without touching WordPress site records or child-site routing.
+# Keep a fresh database in normal WordPress mode until the administrator runs
+# Network Setup. Once wp_blogs exists, reconcile the network root hostname.
 : "${WORDPRESS_NETWORK_DOMAIN:=network.denizagency.ir}"
 export WORDPRESS_NETWORK_DOMAIN
 
 domain_line="define( 'DOMAIN_CURRENT_SITE', '${WORDPRESS_NETWORK_DOMAIN}' );"
+network_tables="unknown"
+if [[ -n "${WORDPRESS_DB_HOST:-}" && -n "${WORDPRESS_DB_NAME:-}" ]]; then
+    network_tables="$(php -r '$m=@mysqli_connect(getenv("WORDPRESS_DB_HOST"),getenv("WORDPRESS_DB_USER"),getenv("WORDPRESS_DB_PASSWORD"),getenv("WORDPRESS_DB_NAME")); if (!$m) exit; $r=@mysqli_query($m,"SHOW TABLES LIKE \\\"wp_blogs\\\""); echo ($r && mysqli_num_rows($r) > 0) ? "present" : "absent";' 2>/dev/null || true)"
+fi
 if [[ -f /var/www/html/wp-config.php ]]; then
-    if grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
-        # Reconcile only the network root constant on an existing volume.
-        awk -v domain_line="$domain_line" '/DOMAIN_CURRENT_SITE/ { print domain_line; next } { print }' \
+    if [[ "$network_tables" == "present" ]]; then
+        # Network Setup has completed; reconcile only the network root constant.
+        if grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
+            awk -v domain_line="$domain_line" '/DOMAIN_CURRENT_SITE/ { print domain_line; next } { print }' \
+                /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+            mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
+        fi
+    elif [[ "$network_tables" == "absent" ]]; then
+        # The normal installer has run, but Network Setup has not. Remove only
+        # the premature network constants from this image's prior bootstrap.
+        awk '/define\\( '\''MULTISITE'\''/ || /define\\( '\''SUBDOMAIN_INSTALL'\''/ || /define\\( '\''DOMAIN_CURRENT_SITE'\''/ || /define\\( '\''PATH_CURRENT_SITE'\''/ || /define\\( '\''SITE_ID_CURRENT_SITE'\''/ || /define\\( '\''BLOG_ID_CURRENT_SITE'\''/ { next }
+            /\\/\\* That.s all, stop editing/ { print "define( '\''WP_ALLOW_MULTISITE'\'', true );" }
+            { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+        mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
+    elif ! grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
+        # A database that is not yet reachable still needs the Network Setup
+        # capability, but must not be forced into Multisite prematurely.
+        awk '/\\/\\* That.s all, stop editing/ { print "define( '\''WP_ALLOW_MULTISITE'\'', true );" } { print }' \
             /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
-    else
-        # Add the multisite constants during first initialization.
-        awk -v domain_line="$domain_line" '/\/\* That.s all, stop editing/ {
-            print "define( '\''MULTISITE'\'', true );"
-            print "define( '\''SUBDOMAIN_INSTALL'\'', false );"
-            print domain_line
-            print "define( '\''PATH_CURRENT_SITE'\'', '\''/'\'' );"
-            print "define( '\''SITE_ID_CURRENT_SITE'\'', 1 );"
-            print "define( '\''BLOG_ID_CURRENT_SITE'\'', 1 );"
-        }
-        { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
+        mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     fi
-    mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     chown www-data:www-data /var/www/html/wp-config.php
 fi
 
