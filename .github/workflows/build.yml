@@ -2,7 +2,9 @@ name: Build and Push Image
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - fix/multisite-routing
 
 jobs:
   build:
@@ -26,5 +28,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/custom-wp:latest
+            ghcr.io/${{ github.repository_owner }}/custom-wp:fix-multisite-routing
             ghcr.io/${{ github.repository_owner }}/custom-wp:${{ github.sha }}
