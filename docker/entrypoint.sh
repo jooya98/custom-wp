@@ -26,8 +26,8 @@ export WORDPRESS_NETWORK_DOMAIN
 domain_line="define( 'DOMAIN_CURRENT_SITE', '${WORDPRESS_NETWORK_DOMAIN}' );"
 network_tables="unknown"
 if [[ -n "${WORDPRESS_DB_HOST:-}" && -n "${WORDPRESS_DB_NAME:-}" ]]; then
-    # CHAR(...) avoids shell/PHP/SQL quote-escaping layers in this startup probe.
-    network_tables="$(php -r '$m=@mysqli_connect(getenv("WORDPRESS_DB_HOST"),getenv("WORDPRESS_DB_USER"),getenv("WORDPRESS_DB_PASSWORD"),getenv("WORDPRESS_DB_NAME")); if (!$m) exit; $r=@mysqli_query($m,"SHOW TABLES LIKE CHAR(119,112,95,98,108,111,103,115)"); echo ($r && mysqli_num_rows($r) > 0) ? "present" : "absent";' 2>/dev/null || true)"
+    # A direct table probe avoids shell/PHP/SQL quote-escaping layers.
+    network_tables="$(php -r 'mysqli_report(MYSQLI_REPORT_OFF); $m=@mysqli_connect(getenv("WORDPRESS_DB_HOST"),getenv("WORDPRESS_DB_USER"),getenv("WORDPRESS_DB_PASSWORD"),getenv("WORDPRESS_DB_NAME")); if (!$m) exit; $r=@mysqli_query($m,"SELECT 1 FROM wp_blogs LIMIT 1"); echo $r ? "present" : "absent";' 2>/dev/null || true)"
 fi
 if [[ -f /var/www/html/wp-config.php ]]; then
     if [[ "$network_tables" == "present" ]]; then
