@@ -30,12 +30,23 @@ if [[ -n "${WORDPRESS_DB_HOST:-}" && -n "${WORDPRESS_DB_NAME:-}" ]]; then
 fi
 if [[ -f /var/www/html/wp-config.php ]]; then
     if [[ "$network_tables" == "present" ]]; then
-        # Network Setup has completed; reconcile only the network root constant.
+        # Network Setup has completed. Ensure the generated network constants
+        # are present, then reconcile only the network root hostname.
         if grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
             awk -v domain_line="$domain_line" '/DOMAIN_CURRENT_SITE/ { print domain_line; next } { print }' \
                 /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
-            mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
+        else
+            awk -v domain_line="$domain_line" '/\\/\\* That.s all, stop editing/ {
+                print "define( '\''MULTISITE'\'', true );"
+                print "define( '\''SUBDOMAIN_INSTALL'\'', false );"
+                print domain_line
+                print "define( '\''PATH_CURRENT_SITE'\'', '\''/'\'' );"
+                print "define( '\''SITE_ID_CURRENT_SITE'\'', 1 );"
+                print "define( '\''BLOG_ID_CURRENT_SITE'\'', 1 );"
+            }
+            { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
         fi
+        mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     elif [[ "$network_tables" == "absent" ]]; then
         # The normal installer has run, but Network Setup has not. Remove only
         # the premature network constants from this image's prior bootstrap.
