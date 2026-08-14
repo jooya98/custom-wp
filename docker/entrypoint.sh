@@ -52,35 +52,10 @@ if [[ -f /var/www/html/wp-config.php ]]; then
     elif ! grep -q "define( 'MULTISITE'" /var/www/html/wp-config.php; then
         # A database that is not yet reachable still needs the Network Setup
         # capability, but must not be forced into Multisite prematurely.
-        awk '/\\/\\* That.s all, stop editing/ { print "define( '\''WP_ALLOW_MULTISITE'\'', true );" } { print }' \
+        sed -E "/\\/\\* That's all, stop editing/ i define( 'WP_ALLOW_MULTISITE', true );" \
             /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
         mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     fi
-    chown www-data:www-data /var/www/html/wp-config.php
-fi
-
-# Reconcile database connection constants on persistent volumes. The official
-# WordPress entrypoint intentionally does not rewrite an existing wp-config.php,
-# but Gerdoo may rotate managed-addon credentials or connection metadata.
-if [[ -f /var/www/html/wp-config.php && -n "${WORDPRESS_DB_HOST:-}" ]]; then
-    db_name_line="define( 'DB_NAME', '${WORDPRESS_DB_NAME//\\/\\\\}' );"
-    db_user_line="define( 'DB_USER', '${WORDPRESS_DB_USER//\\/\\\\}' );"
-    db_password_line="define( 'DB_PASSWORD', '${WORDPRESS_DB_PASSWORD//\\/\\\\}' );"
-    db_host_line="define( 'DB_HOST', '${WORDPRESS_DB_HOST//\\/\\\\}' );"
-    db_name_line=${db_name_line//\\\'/\\\\\'}
-    db_user_line=${db_user_line//\\\'/\\\\\'}
-    db_password_line=${db_password_line//\\\'/\\\\\'}
-    db_host_line=${db_host_line//\\\'/\\\\\'}
-    awk -v db_name_line="$db_name_line" \
-        -v db_user_line="$db_user_line" \
-        -v db_password_line="$db_password_line" \
-        -v db_host_line="$db_host_line" \
-        '/DB_NAME/ { print db_name_line; next }
-         /DB_USER/ { print db_user_line; next }
-         /DB_PASSWORD/ { print db_password_line; next }
-         /DB_HOST/ { print db_host_line; next }
-         { print }' /var/www/html/wp-config.php > /var/www/html/wp-config.php.tmp
-    mv /var/www/html/wp-config.php.tmp /var/www/html/wp-config.php
     chown www-data:www-data /var/www/html/wp-config.php
 fi
 
